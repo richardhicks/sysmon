@@ -3,7 +3,7 @@
     Sysmon configuration - AD CS issuing certification authority
     ============================================================
 
-    Version : 1.0
+    Version : 1.1
     Purpose : High-signal monitoring of CA configuration, policy and
               exit modules, CA database and key material, CRL/AIA
               publication, CA administration tooling, and credential
@@ -565,15 +565,33 @@
                 <TargetObject condition="end with">\CRLAttemptRepublish</TargetObject>
                 <TargetObject condition="end with">\CRLDeltaAttemptRepublish</TargetObject>
                 <TargetObject condition="end with">\HighSerial</TargetObject>
-                <!-- CryptoAPI store cache churn -->
-                <TargetObject condition="contains">\SystemCertificates\CA\Certificates\</TargetObject>
-                <TargetObject condition="contains">\SystemCertificates\AuthRoot\Certificates\</TargetObject>
-                <TargetObject condition="contains">\SystemCertificates\Root\Certificates\</TargetObject>
+                <!-- CryptoAPI opens certificate stores with RegCreateKey, so
+                     every signature check surfaces as a CreateKey on the store
+                     container. Exclude the containers only; a real addition
+                     writes a Blob value under <store>\Certificates\<thumbprint>
+                     and still matches the include rules as SetValue. -->
+                <TargetObject condition="end with">\SystemCertificates\Root\Certificates</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\Root\CRLs</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\Root\CTLs</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\CA\Certificates</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\CA\CRLs</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\CA\CTLs</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\My\Certificates</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\My\CRLs</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\My\CTLs</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\Disallowed\Certificates</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\Disallowed\CRLs</TargetObject>
+                <TargetObject condition="end with">\SystemCertificates\Disallowed\CTLs</TargetObject>
+                <!-- AuthRoot is maintained by Windows automatic root update; suppress entirely -->
+                <TargetObject condition="contains">\SystemCertificates\AuthRoot\</TargetObject>
+                <!-- High-volume legitimate writers -->
                 <Image condition="end with">\TrustedInstaller.exe</Image>
                 <Image condition="end with">\TiWorker.exe</Image>
                 <Image condition="end with">\poqexec.exe</Image>
                 <Image condition="end with">\MsMpEng.exe</Image>
                 <Image condition="end with">\WmiPrvSE.exe</Image>
+                <!-- Sysmon itself, whichever binary name is installed -->
+                <Image condition="end with">\Sysmon.exe</Image>
                 <Image condition="end with">\Sysmon64.exe</Image>
             </RegistryEvent>
         </RuleGroup>
