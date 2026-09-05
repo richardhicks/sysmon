@@ -3,7 +3,9 @@
     Sysmon configuration - AD CS issuing certification authority
     ============================================================
 
-    Version : 1.1
+    Created : September 3, 2026
+    Revised : September 5, 2026
+    Version : 1.2
     Purpose : High-signal monitoring of CA configuration, policy and
               exit modules, CA database and key material, CRL/AIA
               publication, CA administration tooling, and credential
@@ -584,6 +586,35 @@
                 <TargetObject condition="end with">\SystemCertificates\Disallowed\CTLs</TargetObject>
                 <!-- AuthRoot is maintained by Windows automatic root update; suppress entirely -->
                 <TargetObject condition="contains">\SystemCertificates\AuthRoot\</TargetObject>
+                <!-- Group Policy physical stores are opened (RegCreateKey) by every
+                     store enumeration, including MMC certificate snap-ins. Exclude
+                     the logical store keys and their containers; a GPO-delivered
+                     certificate is a SetValue of Blob under <store>\Certificates\
+                     <thumbprint> written by gpsvc and still matches the include rule. -->
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Root</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\CA</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Disallowed</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\TrustedPublisher</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\TrustedPeople</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Trust</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Root\Certificates</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Root\CRLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Root\CTLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\CA\Certificates</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\CA\CRLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\CA\CTLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Disallowed\Certificates</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Disallowed\CRLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Disallowed\CTLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\TrustedPublisher\Certificates</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\TrustedPublisher\CRLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\TrustedPublisher\CTLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\TrustedPeople\Certificates</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\TrustedPeople\CRLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\TrustedPeople\CTLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Trust\Certificates</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Trust\CRLs</TargetObject>
+                <TargetObject condition="end with">\Policies\Microsoft\SystemCertificates\Trust\CTLs</TargetObject>
                 <!-- High-volume legitimate writers -->
                 <Image condition="end with">\TrustedInstaller.exe</Image>
                 <Image condition="end with">\TiWorker.exe</Image>
