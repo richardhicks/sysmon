@@ -3,6 +3,9 @@
     Sysmon configuration - NDES / AD CS certificate infrastructure
     ==============================================================
     
+    Created : August 24, 2026
+    Revised : September 6, 2026
+
     Version : 1.1
     Purpose : High-signal monitoring of SCEP enrollment configuration,
               IIS application pool control, RA certificate handling,
@@ -21,6 +24,9 @@
 
     Log     : Applications and Services Logs >
               Microsoft > Windows > Sysmon > Operational
+
+    See also: sysmon-adcs-issuing-ca.xml for enterprise issuing CA monitoring
+              https://github.com/richardhicks/sysmon/blob/main/sysmon-adcs-issuing-ca.xml
 
     Notes   : Registry root keys appear abbreviated (HKLM, HKU, HKCR).
               Rules use "contains" so both native and WOW6432Node

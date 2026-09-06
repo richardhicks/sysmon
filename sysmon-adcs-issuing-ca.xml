@@ -4,8 +4,8 @@
     ============================================================
 
     Created : September 3, 2026
-    Revised : September 5, 2026
-    Version : 1.2
+    Revised : September 6, 2026
+    Version : 1.3
     Purpose : High-signal monitoring of CA configuration, policy and
               exit modules, CA database and key material, CRL/AIA
               publication, CA administration tooling, and credential
@@ -15,9 +15,11 @@
     Scope   : Targeted, not a general enterprise baseline. Intended to
               run standalone on issuing CA servers, or to be merged
               into an existing baseline (SwiftOnSecurity, Olaf Hartong
-              sysmon-modular) as an additional rule set. If Web
-              Enrollment, CES/CEP, or NDES is co-located, review the
-              w3wp.exe rules and adjust.
+              sysmon-modular) as an additional rule set. Assumes a
+              dedicated CA with no IIS, Web Enrollment, CES/CEP, or
+              NDES role installed. Those roles are not covered here;
+              IIS components appearing on the host are logged as a
+              finding (see ProcCreate-Include and Registry-Include).
 
     Install : sysmon64.exe -accepteula -i sysmon-adcs-issuing-ca.xml
     Update  : sysmon64.exe -c sysmon-adcs-issuing-ca.xml
@@ -25,16 +27,19 @@
     Schema  : sysmon64.exe -s (confirm before deploying)
     Log     : Applications and Services Logs >
               Microsoft > Windows > Sysmon > Operational
+    See also: sysmon-ndes.xml for NDES / SCEP enrollment hosts
+              https://github.com/richardhicks/sysmon/blob/main/sysmon-ndes.xml
 
     Notes   : Complements, not replaces, native CA auditing:
                 certutil -setreg CA\AuditFilter 127  (restart CertSvc)
-                auditpol /set /subcategory:"Certification Services"
-                  /success:enable /failure:enable
-              Registry root keys appear abbreviated (HKLM, HKU, HKCR).
+                auditpol /set /subcategory:"Certification Services" /success:enable /failure:enable
+
+              Registry root keys appear abbreviated (HKLM, HKU, HKCR)
               Rules use "contains" so both native and WOW6432Node
               paths are captured. Add your backup agent, SIEM
               forwarder, and HSM client to the exclude groups after
               a pilot noise review.
+
 -->
 
 <Sysmon schemaversion="4.90">
@@ -69,6 +74,32 @@
                 <Image condition="is">C:\Windows\System32\dllhost.exe</Image>
                 <Image condition="is">C:\Windows\Sysmon64.exe</Image>
                 <Image condition="is">C:\Windows\Sysmon.exe</Image>
+                <!-- Known on-demand Microsoft services started by the SCM.
+                     Compound rules so the exclusion applies only when the
+                     parent is services.exe. A planted service hosted in
+                     svchost.exe is still visible via the ServiceDll registry
+                     rule and the unsigned / relocated ImageLoad rules. -->
+                <Rule groupRelation="and">
+                    <ParentImage condition="is">C:\Windows\System32\services.exe</ParentImage>
+                    <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+                    <CommandLine condition="begin with">C:\WINDOWS\system32\svchost.exe -k </CommandLine>
+                </Rule>
+                <Rule groupRelation="and">
+                    <ParentImage condition="is">C:\Windows\System32\services.exe</ParentImage>
+                    <Image condition="is">C:\Windows\System32\sppsvc.exe</Image>
+                </Rule>
+                <Rule groupRelation="and">
+                    <ParentImage condition="is">C:\Windows\System32\services.exe</ParentImage>
+                    <Image condition="is">C:\Windows\System32\VSSVC.exe</Image>
+                </Rule>
+                <Rule groupRelation="and">
+                    <ParentImage condition="is">C:\Windows\System32\services.exe</ParentImage>
+                    <Image condition="is">C:\Windows\System32\msdtc.exe</Image>
+                </Rule>
+                <Rule groupRelation="and">
+                    <ParentImage condition="is">C:\Windows\System32\services.exe</ParentImage>
+                    <Image condition="is">C:\Windows\System32\SecurityHealthService.exe</Image>
+                </Rule>
             </ProcessCreate>
         </RuleGroup>
 
@@ -170,6 +201,15 @@
                 <Image name="LOLBin_auditpol" condition="end with">\auditpol.exe</Image>
                 <Image name="LOLBin_dsregcmd" condition="end with">\dsregcmd.exe</Image>
 
+                <!-- IIS should not be present on a dedicated issuing CA.
+                     Any IIS binary executing is a configuration drift finding. -->
+                <Image name="IIS_Present" condition="contains">\System32\inetsrv\</Image>
+                <Image name="IIS_Present" condition="end with">\iisreset.exe</Image>
+                <CommandLine name="IIS_Present" condition="contains">Web-Server</CommandLine>
+                <CommandLine name="IIS_Present" condition="contains">ADCS-Web-Enrollment</CommandLine>
+                <CommandLine name="IIS_Present" condition="contains">ADCS-Enroll-Web</CommandLine>
+                <CommandLine name="IIS_Present" condition="contains">ADCS-Device-Enrollment</CommandLine>
+
                 <!-- Remote execution / lateral movement surfaces -->
                 <Image name="Remote_psexec" condition="end with">\psexec.exe</Image>
                 <Image name="Remote_psexesvc" condition="end with">\psexesvc.exe</Image>
@@ -215,9 +255,9 @@
 
         <!-- ============================================================
              Event 3 - Network Connect
-             Outbound from CA and scripting processes, all inbound to
-             certsrv.exe (ICertRequest / ICertAdmin over RPC), and any
-             process reaching remote management or exfil ports.
+             Outbound from CA and scripting processes (certsrv.exe by
+             image also captures inbound ICertRequest / ICertAdmin RPC),
+             and any process on remote management or exfil ports.
              ============================================================ -->
         <RuleGroup name="NetConnect-Include" groupRelation="or">
             <NetworkConnect onmatch="include">
@@ -236,11 +276,9 @@
                 <Image condition="end with">\curl.exe</Image>
                 <Image condition="end with">\msiexec.exe</Image>
                 <Image condition="end with">\mmc.exe</Image>
-                <Image condition="end with">\w3wp.exe</Image>
                 <Image condition="contains">\Temp\</Image>
                 <Image condition="begin with">C:\Users\</Image>
                 <Image condition="begin with">C:\ProgramData\</Image>
-                <Initiated condition="is">false</Initiated>
                 <DestinationPort condition="is">21</DestinationPort>
                 <DestinationPort condition="is">22</DestinationPort>
                 <DestinationPort condition="is">23</DestinationPort>
@@ -327,8 +365,14 @@
                 <Image condition="end with">\lsass.exe</Image>
                 <Image condition="end with">\svchost.exe</Image>
                 <Image condition="end with">\WmiPrvSE.exe</Image>
-                <Image condition="end with">\MsMpEng.exe</Image>
+                <Image condition="end with">\Sysmon.exe</Image>
                 <Image condition="end with">\Sysmon64.exe</Image>
+                <!-- Defender platform runs from ProgramData and is signed
+                     "Microsoft Windows Publisher", which the signer
+                     exclusion below does not cover. Path prefix survives
+                     platform version folder changes. -->
+                <Image condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</Image>
+                <ImageLoaded condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</ImageLoaded>
                 <Signature condition="is">Microsoft Windows</Signature>
             </ImageLoad>
         </RuleGroup>
@@ -338,7 +382,7 @@
              ============================================================ -->
         <RuleGroup name="RemoteThread-Exclude" groupRelation="or">
             <CreateRemoteThread onmatch="exclude">
-                <SourceImage condition="end with">\MsMpEng.exe</SourceImage>
+                <SourceImage condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</SourceImage>
                 <SourceImage condition="is">C:\Windows\System32\wbem\WmiPrvSE.exe</SourceImage>
                 <SourceImage condition="is">C:\Windows\System32\svchost.exe</SourceImage>
                 <SourceImage condition="is">C:\Windows\System32\wininit.exe</SourceImage>
@@ -359,7 +403,7 @@
                 <Image condition="end with">\wbengine.exe</Image>
                 <Image condition="end with">\vssvc.exe</Image>
                 <Image condition="end with">\defrag.exe</Image>
-                <Image condition="end with">\MsMpEng.exe</Image>
+                <Image condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</Image>
                 <Image condition="is">C:\Windows\System32\svchost.exe</Image>
                 <!-- Add enterprise backup agent here -->
             </RawAccessRead>
@@ -392,7 +436,7 @@
                 <SourceImage condition="is">C:\Windows\System32\winlogon.exe</SourceImage>
                 <SourceImage condition="is">C:\Windows\System32\taskmgr.exe</SourceImage>
                 <SourceImage condition="is">C:\Windows\explorer.exe</SourceImage>
-                <SourceImage condition="end with">\MsMpEng.exe</SourceImage>
+                <SourceImage condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</SourceImage>
                 <!-- Low-privilege query access -->
                 <GrantedAccess condition="is">0x1000</GrantedAccess>
                 <GrantedAccess condition="is">0x1400</GrantedAccess>
@@ -460,7 +504,7 @@
                 <Image condition="end with">\TrustedInstaller.exe</Image>
                 <Image condition="end with">\wuauclt.exe</Image>
                 <Image condition="end with">\poqexec.exe</Image>
-                <Image condition="end with">\MsMpEng.exe</Image>
+                <Image condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</Image>
                 <Image condition="end with">\wermgr.exe</Image>
                 <TargetFilename condition="begin with">C:\Windows\SoftwareDistribution\</TargetFilename>
                 <TargetFilename condition="begin with">C:\Windows\WinSxS\</TargetFilename>
@@ -544,6 +588,10 @@
                 <TargetObject condition="contains">\Terminal Server\fDenyTSConnections</TargetObject>
                 <TargetObject condition="contains">\Services\WinRM\</TargetObject>
                 <TargetObject condition="contains">\Services\RemoteRegistry\</TargetObject>
+                <!-- IIS service keys should never exist on a dedicated CA -->
+                <TargetObject name="IIS_Present" condition="contains">\Services\W3SVC</TargetObject>
+                <TargetObject name="IIS_Present" condition="contains">\Services\WAS\</TargetObject>
+                <TargetObject name="IIS_Present" condition="contains">\Microsoft\InetStp</TargetObject>
                 <TargetObject condition="contains">\Policies\System\EnableLUA</TargetObject>
                 <TargetObject condition="contains">\Policies\System\LocalAccountTokenFilterPolicy</TargetObject>
                 <TargetObject condition="contains">\Policies\Microsoft\Windows Defender</TargetObject>
@@ -586,6 +634,10 @@
                 <TargetObject condition="end with">\SystemCertificates\Disallowed\CTLs</TargetObject>
                 <!-- AuthRoot is maintained by Windows automatic root update; suppress entirely -->
                 <TargetObject condition="contains">\SystemCertificates\AuthRoot\</TargetObject>
+                <!-- Client-side copy of AD certificate templates, rewritten by the
+                     CA console and the autoenrollment task. Template changes are
+                     audited on the DC (event 5136), not here. -->
+                <TargetObject condition="contains">\Cryptography\CertificateTemplateCache\</TargetObject>
                 <!-- Group Policy physical stores are opened (RegCreateKey) by every
                      store enumeration, including MMC certificate snap-ins. Exclude
                      the logical store keys and their containers; a GPO-delivered
@@ -619,7 +671,7 @@
                 <Image condition="end with">\TrustedInstaller.exe</Image>
                 <Image condition="end with">\TiWorker.exe</Image>
                 <Image condition="end with">\poqexec.exe</Image>
-                <Image condition="end with">\MsMpEng.exe</Image>
+                <Image condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</Image>
                 <Image condition="end with">\WmiPrvSE.exe</Image>
                 <!-- Sysmon itself, whichever binary name is installed -->
                 <Image condition="end with">\Sysmon.exe</Image>
@@ -694,7 +746,26 @@
 
         <RuleGroup name="Pipe-Exclude" groupRelation="or">
             <PipeEvent onmatch="exclude">
-                <Image condition="end with">\MsMpEng.exe</Image>
+                <Image condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</Image>
+                <!-- Local Windows services legitimately connect to the LSA and
+                     SCM pipes. Remote clients over SMB appear as Image "System"
+                     (srv2.sys) and are deliberately left in. -->
+                <Rule groupRelation="and">
+                    <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+                    <PipeName condition="is">\lsass</PipeName>
+                </Rule>
+                <Rule groupRelation="and">
+                    <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+                    <PipeName condition="is">\samr</PipeName>
+                </Rule>
+                <Rule groupRelation="and">
+                    <Image condition="is">C:\Windows\System32\lsass.exe</Image>
+                    <PipeName condition="is">\lsass</PipeName>
+                </Rule>
+                <Rule groupRelation="and">
+                    <Image condition="is">C:\Windows\System32\services.exe</Image>
+                    <PipeName condition="is">\svcctl</PipeName>
+                </Rule>
             </PipeEvent>
         </RuleGroup>
 
@@ -776,7 +847,7 @@
                 <Image condition="end with">\TiWorker.exe</Image>
                 <Image condition="end with">\TrustedInstaller.exe</Image>
                 <Image condition="end with">\poqexec.exe</Image>
-                <Image condition="end with">\MsMpEng.exe</Image>
+                <Image condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</Image>
                 <TargetFilename condition="begin with">C:\Windows\SoftwareDistribution\</TargetFilename>
                 <TargetFilename condition="begin with">C:\Windows\WinSxS\</TargetFilename>
                 <TargetFilename condition="begin with">C:\Windows\Installer\</TargetFilename>
@@ -834,7 +905,7 @@
                 <Image condition="end with">\TrustedInstaller.exe</Image>
                 <Image condition="end with">\poqexec.exe</Image>
                 <Image condition="end with">\wuauclt.exe</Image>
-                <Image condition="end with">\MsMpEng.exe</Image>
+                <Image condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</Image>
                 <TargetFilename condition="begin with">C:\Windows\SoftwareDistribution\</TargetFilename>
                 <TargetFilename condition="begin with">C:\Windows\WinSxS\</TargetFilename>
                 <TargetFilename condition="begin with">C:\Windows\servicing\</TargetFilename>
